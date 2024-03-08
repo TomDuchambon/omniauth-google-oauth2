@@ -9,7 +9,8 @@ module OmniAuth
   module Strategies
     # Main class for Google OAuth2 strategy.
     class GoogleOauth2 < OmniAuth::Strategies::OAuth2
-      ALLOWED_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'].freeze
+
+      ALLOWED_ISSUERS =  'https://accounts.google.com'
       BASE_SCOPE_URL = 'https://www.googleapis.com/auth/'
       BASE_SCOPES = %w[profile email openid].freeze
       DEFAULT_SCOPE = 'email,profile'
@@ -25,6 +26,9 @@ module OmniAuth
       option :authorize_options, AUTHORIZE_OPTIONS
       option :overridable_authorize_options, AUTHORIZE_OPTIONS
       option :authorized_client_ids, []
+      option :verify_iss, true
+      # option :provider_ignores_state, true
+
 
       option :client_options,
              site: 'https://oauth2.googleapis.com',
@@ -69,26 +73,20 @@ module OmniAuth
 
       extra do
         hash = {}
-        token = nil_or_empty?(access_token['id_token']) ? access_token.token : access_token['id_token']
-        hash[:id_token] = token
-        if !options[:skip_jwt] && !nil_or_empty?(token)
-          decoded = ::JWT.decode(token, nil, false).first
-
-          # We have to manually verify the claims because the third parameter to
-          # JWT.decode is false since no verification key is provided.
-          ::JWT::Verify.verify_claims(decoded,
-                                      verify_iss: true,
-                                      iss: ALLOWED_ISSUERS,
-                                      verify_aud: true,
-                                      aud: options.client_id,
-                                      verify_sub: false,
-                                      verify_expiration: true,
-                                      verify_not_before: true,
-                                      verify_iat: false,
-                                      verify_jti: false,
-                                      leeway: options[:jwt_leeway])
-
-          hash[:id_info] = decoded
+        hash[:id_token] = access_token['id_token']
+        if !options[:skip_jwt] && !access_token['id_token'].nil?
+          hash[:id_info] = ::JWT.decode(
+            access_token['id_token'], nil, false, verify_iss: options.verify_iss,
+                                                  iss: ALLOWED_ISSUERS,
+                                                  verify_aud: true,
+                                                  aud: options.client_id,
+                                                  verify_sub: false,
+                                                  verify_expiration: true,
+                                                  verify_not_before: true,
+                                                  verify_iat: true,
+                                                  verify_jti: false,
+                                                  leeway: options[:jwt_leeway]
+          ).first
         end
         hash[:raw_info] = raw_info unless skip_info?
         prune! hash
